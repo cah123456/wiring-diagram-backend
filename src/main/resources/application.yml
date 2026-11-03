@@ -1,0 +1,73 @@
+# ============================================================================
+# GRIDLINE 后端运行配置
+# 所有敏感项均支持环境变量覆盖，生产环境不要使用默认的 root/root。
+# ============================================================================
+server:
+  # HTTP 监听端口；前端 Vite 开发服务器将 /api 代理到这里。
+  port: 8080
+  # 优雅停机：收到 SIGTERM 后先停止接收新请求，等待处理中的请求完成。
+  shutdown: graceful
+
+spring:
+  application:
+    name: wiring-diagram
+
+  datasource:
+    # MySQL 连接串。createDatabaseIfNotExist=true 仅用于开发环境首次启动自动建库；
+    # serverTimezone 必须与 JVM、数据库会话时区一致，避免时间统计出现偏差。
+    url: ${DB_URL:jdbc:mysql://localhost:3306/switchgear_wiring?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:root}
+    hikari:
+      # 连接池上限按单实例、低并发场景设置；连接数过高反而会增加 MySQL 负担。
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  jpa:
+    # 关闭 Open Session In View，避免请求结束后仍占用数据库连接；
+    # 所有懒加载都必须在事务内完成（本项目通过 DTO 显式转换规避）。
+    open-in-view: false
+    hibernate:
+      # validate：只校验实体与表结构是否一致，不自动建表/改表。
+      # 表结构以 Flyway 迁移脚本为唯一事实来源。
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          # Hibernate 的 JDBC 时区，与连接串 serverTimezone 保持一致。
+          time_zone: Asia/Shanghai
+        # 关闭 SQL 打印，需要排查时改为 true（会输出大量日志）。
+        format_sql: false
+
+  flyway:
+    # 启动时自动执行 db/migration 下尚未应用的脚本。
+    enabled: true
+    # 兼容已存在但无 flyway_schema_history 的旧库；新环境无影响。
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  jackson:
+    # 响应中省略 null 字段，减少 payload；前端对可选字段做了空值兼容。
+    default-property-inclusion: non_null
+    serialization:
+      # LocalDateTime 输出 ISO-8601 字符串，而不是时间戳数字。
+      write-dates-as-timestamps: false
+
+  web:
+    resources:
+      # 本项目是纯 API 服务，不提供静态资源；关闭后未知路径会抛
+      # NoHandlerFoundException，由 GlobalExceptionHandler 统一返回 404 R 响应。
+      add-mappings: false
+
+app:
+  cors:
+    # 允许的来源，逗号分隔；默认放行本机及常见私网网段，便于局域网访问。
+    # 生产环境建议通过 CORS_ALLOWED_ORIGIN_PATTERNS 收紧为具体域名。
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:*,http://127.0.0.1:*,http://192.168.*:*,http://10.*:*,http://172.*:*}
+
+logging:
+  level:
+    # 业务包输出 INFO；需要排查接口问题时临时改为 DEBUG。
+    com.gridline.wiring: INFO
+    # Hibernate SQL 默认不打印，避免日志膨胀。
+    org.hibernate.SQL: WARN
