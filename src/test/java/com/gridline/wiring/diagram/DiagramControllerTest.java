@@ -1,9 +1,13 @@
 package com.gridline.wiring.diagram;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.gridline.wiring.common.ApiException;
-import com.gridline.wiring.diagram.dto.DiagramDetail;
-import com.gridline.wiring.diagram.dto.PageResponse;
+import com.gridline.wiring.common.ResultCode;
+import com.gridline.wiring.controller.DiagramController;
+import com.gridline.wiring.exception.BusinessException;
+import com.gridline.wiring.service.DiagramService;
+import com.gridline.wiring.vo.DiagramSummaryVO;
+import com.gridline.wiring.vo.DiagramVO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -12,7 +16,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.when;
@@ -40,26 +43,34 @@ class DiagramControllerTest {
     private DiagramService diagramService;
 
     @Test
-    void listShouldWrapPageResponseInR() throws Exception {
-        when(diagramService.list("", 0, 24))
-                .thenReturn(new PageResponse<>(List.of(), 0, 0, 24, 0));
+    void listShouldWrapPageInR() throws Exception {
+        Page<DiagramSummaryVO> page = new Page<>(1, 10);
+        page.setTotal(0);
+        when(diagramService.listDiagrams(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(page);
 
         mockMvc.perform(get("/api/diagrams"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.code").value(20000))
                 .andExpect(jsonPath("$.message").value("操作成功"))
-                .andExpect(jsonPath("$.data.result.items").isArray())
-                .andExpect(jsonPath("$.data.result.total").value(0));
+                .andExpect(jsonPath("$.data.result.records").isArray())
+                .andExpect(jsonPath("$.data.result.total").value(0))
+                .andExpect(jsonPath("$.data.result.current").value(1));
     }
 
     @Test
     void createShouldReturn201AndWrappedDetail() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        DiagramDetail detail = new DiagramDetail(1L, "测试图纸", "WD-20261103-ABCD", "10kV",
-                null, 1, mapper.createObjectNode(), null,
-                LocalDateTime.now(), LocalDateTime.now());
-        when(diagramService.create(org.mockito.ArgumentMatchers.any())).thenReturn(detail);
+        DiagramVO detail = new DiagramVO();
+        detail.setId(1L);
+        detail.setName("测试图纸");
+        detail.setCode("WD-20261103-ABCD");
+        detail.setVoltageLevel("10kV");
+        detail.setDocument(mapper.createObjectNode());
+        detail.setCreatedAt(LocalDateTime.now());
+        detail.setUpdatedAt(LocalDateTime.now());
+        when(diagramService.createDiagram(org.mockito.ArgumentMatchers.any())).thenReturn(detail);
 
         mockMvc.perform(post("/api/diagrams")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -85,19 +96,19 @@ class DiagramControllerTest {
 
     @Test
     void getShouldReturnRBodyOnNotFound() throws Exception {
-        when(diagramService.get(999L))
-                .thenThrow(ApiException.notFound("图纸不存在或已被删除"));
+        when(diagramService.getDetail(999L))
+                .thenThrow(BusinessException.notFound("图纸不存在或已被删除"));
 
         mockMvc.perform(get("/api/diagrams/999"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.code").value(20001))
+                .andExpect(jsonPath("$.code").value(ResultCode.ERROR.getCode()))
                 .andExpect(jsonPath("$.message").value("图纸不存在或已被删除"));
     }
 
     @Test
     void deleteShouldReturnSuccessWithoutResult() throws Exception {
-        doNothing().when(diagramService).delete(1L);
+        doNothing().when(diagramService).deleteDiagram(1L);
 
         mockMvc.perform(delete("/api/diagrams/1"))
                 .andExpect(status().isOk())
@@ -117,17 +128,22 @@ class DiagramControllerTest {
 
     @Test
     void invalidQueryParameterShouldReturn400() throws Exception {
-        mockMvc.perform(get("/api/diagrams").param("page", "abc"))
+        mockMvc.perform(get("/api/diagrams").param("pageNum", "abc"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("请求参数缺失或格式错误"));
+                .andExpect(jsonPath("$.code").value(20001))
+                .andExpect(jsonPath("$.message").value("提交的数据校验未通过"))
+                .andExpect(jsonPath("$.data.fields.pageNum").exists());
     }
 
     @Test
-    void missingRequestParameterShouldReturn400() throws Exception {
-        mockMvc.perform(post("/api/diagrams/1/versions/2/restore"))
+    void invalidJsonBodyShouldReturn400() throws Exception {
+        mockMvc.perform(post("/api/diagrams")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{not-json"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message").value("请求参数缺失或格式错误"));
+                .andExpect(jsonPath("$.code").value(20001))
+                .andExpect(jsonPath("$.message").value("请求内容格式错误，请检查 JSON 数据"));
     }
 }

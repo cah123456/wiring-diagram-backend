@@ -1,12 +1,14 @@
-package com.gridline.wiring.common;
+package com.gridline.wiring.exception;
 
+import com.gridline.wiring.common.R;
+import com.gridline.wiring.common.ResultCode;
 import jakarta.servlet.http.HttpServletRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -23,53 +25,36 @@ import java.util.Map;
 /**
  * 全局异常处理器。
  *
- * <p>职责是把握出 Controller 的异常统一转换为 {@link R} 响应体，同时保留准确的
- * HTTP 状态码。这样前端既可以按 HTTP 状态码做通用错误拦截，也可以直接读取
- * {@code message} 展示提示、读取 {@code data.fields} 定位具体校验字段。</p>
+ * <p>把抛出 Controller 的异常统一转换为 {@link R} 响应体，同时保留准确的 HTTP 状态码。
+ * 前端既可以按 HTTP 状态码做通用错误拦截，也可以读取 {@code message} 展示提示、
+ * 读取 {@code data.fields} 定位具体校验字段。</p>
  *
- * <p>处理优先级（Spring 会选择最具体的异常类型）：</p>
- * <ol>
- *   <li>{@link ApiException}：业务代码主动抛出的可预期异常（404/400/409）；</li>
- *   <li>{@link MethodArgumentNotValidException}：Bean Validation 校验失败；</li>
- *   <li>{@link HttpMessageNotReadableException}：请求体不是合法 JSON；</li>
- *   <li>{@link NoHandlerFoundException} / {@link NoResourceFoundException}：请求了
- *       不存在的接口或资源（404）；</li>
- *   <li>{@link HttpRequestMethodNotSupportedException}：HTTP 方法不支持（405）；</li>
- *   <li>{@link MissingServletRequestParameterException} /
- *       {@link MethodArgumentTypeMismatchException}：参数缺失或类型错误（400）；</li>
- *   <li>{@link DataIntegrityViolationException}：数据库唯一键、外键等约束冲突；</li>
- *   <li>{@link Exception}：兜底异常，记录完整堆栈并返回 500。</li>
- * </ol>
+ * <p>处理优先级由 Spring 按最具体的异常类型选择，兜底为 {@link Exception}。</p>
  */
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-
     /**
-     * 处理业务异常。
-     *
-     * <p>{@link ApiException} 携带 HTTP 状态码和面向用户的提示语，因此直接把提示语
-     * 放入 R.message，业务状态码使用通用的 {@link ResultCode#ERROR}。服务端不再向
-     * 前端暴露堆栈或内部实现细节。</p>
+     * 处理业务异常，使用异常自带 HTTP 状态码与业务状态码。
      *
      * @param ex      业务异常
-     * @param request 当前请求，仅用于日志定位，不写入响应体
+     * @param request 当前请求，仅用于日志定位
      * @return 带真实 HTTP 状态码的 R 响应
      */
-    @ExceptionHandler(ApiException.class)
-    public ResponseEntity<R> handleApiException(ApiException ex, HttpServletRequest request) {
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<R> handleBusinessException(BusinessException ex,
+                                                      HttpServletRequest request) {
         log.debug("Business exception at {}: {}", request.getRequestURI(), ex.getMessage());
         return ResponseEntity.status(ex.getStatus())
-                .body(R.error().message(ex.getMessage()));
+                .body(R.error(ex.getResultCode()).message(ex.getMessage()));
     }
 
     /**
      * 处理请求参数校验失败。
      *
-     * <p>同一字段可能触发多条约束，这里使用 {@code putIfAbsent} 只保留第一条提示，
-     * 避免前端展示重复信息。字段错误放在 {@code data.fields}，前端表单可以按字段名
-     * 精确标红。</p>
+     * <p>同一字段可能触发多条约束，这里只保留第一条提示。字段错误放在
+     * {@code data.fields}，前端表单可以按字段名精确标红。</p>
      *
      * @param ex      校验异常
      * @param request 当前请求
@@ -89,10 +74,7 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 处理无法解析的请求体。
-     *
-     * <p>常见原因包括 JSON 语法错误、字段类型不匹配、请求体为空等。具体解析细节可能
-     * 包含类名和字段路径，只写入服务端日志，不返回给前端。</p>
+     * 处理无法解析的请求体，例如 JSON 语法错误、字段类型不匹配、请求体为空。
      *
      * @param ex      解析异常
      * @param request 当前请求
@@ -108,11 +90,7 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 处理不存在的接口路径。
-     *
-     * <p>Spring MVC 找不到映射时抛出 {@link NoHandlerFoundException}。如果不单独
-     * 处理，它会被最后的 {@link Exception} 兜底方法误判为系统异常并返回 500。
-     * 这里明确返回 404，同时仍然使用 R 响应体。</p>
+     * 处理不存在的接口路径，避免落入 500 兜底。
      *
      * @param ex      未找到处理器的异常
      * @param request 当前请求
@@ -127,10 +105,7 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 处理静态资源不存在。
-     *
-     * <p>当关闭静态资源映射后，少数路径仍可能由资源处理器抛出该异常。它与
-     * {@link NoHandlerFoundException} 语义相同，都返回 404，避免落入 500 兜底。</p>
+     * 处理静态资源不存在。关闭资源映射后，少数路径由资源处理器抛出该异常。
      *
      * @param ex      资源不存在异常
      * @param request 当前请求
@@ -162,13 +137,12 @@ public class GlobalExceptionHandler {
     /**
      * 处理缺失查询参数或参数类型不匹配，例如把页码传成非数字。
      *
-     * <p>这类错误属于客户端输入问题，必须返回 400 而不是 500。</p>
-     *
      * @param ex      参数异常
      * @param request 当前请求
      * @return HTTP 400 + R 错误响应
      */
     @ExceptionHandler({
+            BindException.class,
             MissingServletRequestParameterException.class,
             MethodArgumentTypeMismatchException.class
     })
@@ -179,10 +153,7 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 处理数据库约束冲突。
-     *
-     * <p>例如并发创建同名图纸触发唯一索引、图纸仍被版本记录引用等。返回 409 让前端
-     * 提示用户刷新后重试，而不是误报 500。</p>
+     * 处理数据库约束冲突，例如图纸编号唯一键碰撞。
      *
      * @param ex      数据完整性异常
      * @param request 当前请求
@@ -198,10 +169,7 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 兜底处理未预期异常。
-     *
-     * <p>必须记录完整堆栈以便排查。响应体只给出通用提示，避免泄露 SQL、类名、路径等
-     * 内部信息；业务状态码使用 {@link ResultCode#SYSTEM_ERROR}。</p>
+     * 兜底处理未预期异常。记录完整堆栈，但响应体不泄露内部信息。
      *
      * @param ex      未预期异常
      * @param request 当前请求

@@ -48,14 +48,15 @@ const cleanup = async () => {
 
 const run = async () => {
   const suffix = Date.now().toString(36).toUpperCase()
-  const name = `R响应冒烟-${suffix}`
+  const name = `简化版冒烟-${suffix}`
 
   try {
-    const list = await call('GET', '/diagrams?page=0&size=5')
+    const list = await call('GET', '/diagrams?pageNum=1&pageSize=5')
     const listBody = expectEnvelope(list, 200, true, '列表')
-    assert.ok(Array.isArray(listBody.data.result.items), '列表 result.items 不是数组')
+    assert.ok(Array.isArray(listBody.data.result.records), '列表 result.records 不是数组')
     assert.equal(typeof listBody.data.result.total, 'number', '列表 total 不是数字')
-    record('GET /diagrams 返回 R + 分页数据')
+    assert.equal(listBody.data.result.current, 1, '列表 current 应为 1')
+    record('GET /diagrams 返回 R + IPage 分页数据')
 
     const stats = await call('GET', '/diagrams/stats')
     const statsBody = expectEnvelope(stats, 200, true, '统计')
@@ -71,17 +72,17 @@ const run = async () => {
     const create = await call('POST', '/diagrams', {
       name,
       voltageLevel: '10kV',
-      description: '统一 R 响应冒烟测试，测试结束会自动删除',
+      description: 'MyBatis-Plus 简化版冒烟测试，测试结束会自动删除',
     })
     const createBody = expectEnvelope(create, 201, true, '创建')
     const id = createBody.data.result.id
     createdIds.push(id)
     assert.ok(id > 0, '创建结果缺少 id')
-    assert.equal(createBody.data.result.revision, 1, '新建修订号应为 1')
     assert.equal(createBody.message, '图纸创建成功', '创建提示语不符')
+    assert.equal(createBody.data.result.revision, undefined, '简化后不应再返回 revision')
     assert.ok(Array.isArray(createBody.data.result.document.nodes), '默认文档缺少 nodes')
     assert.equal(createBody.data.result.document.nodes.length, 0, '默认文档 nodes 应为空')
-    record('POST /diagrams 返回 201 + data.result + 默认文档')
+    record('POST /diagrams 返回 201 + data.result + 默认空白文档')
 
     const detail = await call('GET', `/diagrams/${id}`)
     const detailBody = expectEnvelope(detail, 200, true, '详情')
@@ -95,8 +96,8 @@ const run = async () => {
     })
     const metaBody = expectEnvelope(meta, 200, true, '改元信息')
     assert.equal(metaBody.data.result.name, `${name}-已改名`, '改名未生效')
-    assert.equal(metaBody.data.result.revision, 1, '改元信息不应增加 revision')
-    record('PATCH /diagrams/{id} 修改元信息且不改 revision')
+    assert.equal(metaBody.data.result.voltageLevel, '0.4kV', '电压等级未生效')
+    record('PATCH /diagrams/{id} 修改元信息')
 
     const document = {
       schemaVersion: 1,
@@ -117,59 +118,28 @@ const run = async () => {
       edges: [],
     }
 
-    const save = await call('PUT', `/diagrams/${id}`, {
-      revision: 1,
-      document,
-      changeNote: '冒烟测试保存',
-    })
+    const save = await call('PUT', `/diagrams/${id}`, { document })
     const saveBody = expectEnvelope(save, 200, true, '保存')
-    assert.equal(saveBody.data.result.revision, 2, '保存后 revision 应为 2')
     assert.equal(saveBody.data.result.document.nodes.length, 1, '保存后节点数不符')
-    record('PUT /diagrams/{id} 保存成功并自增 revision')
+    assert.equal(saveBody.data.result.revision, undefined, '保存结果不应包含 revision')
+    record('PUT /diagrams/{id} 保存成功')
 
-    const stale = await call('PUT', `/diagrams/${id}`, {
-      revision: 1,
-      document,
-    })
-    const staleBody = expectEnvelope(stale, 409, false, '版本冲突')
-    assert.ok(staleBody.message.includes('已在其他窗口更新'), '409 提示语不符')
-    record('旧 revision 保存返回 409 + R 错误体')
-
-    const invalid = await call('PUT', `/diagrams/${id}`, {
-      revision: 2,
-      document: {},
-    })
+    const invalid = await call('PUT', `/diagrams/${id}`, { document: {} })
     const invalidBody = expectEnvelope(invalid, 400, false, '非法文档')
     assert.equal(invalidBody.message, '图纸内容缺少 nodes 或 edges 数组', '非法文档提示不符')
     record('缺少 nodes/edges 返回 400 + R 错误体')
-
-    const versions = await call('GET', `/diagrams/${id}/versions`)
-    const versionsBody = expectEnvelope(versions, 200, true, '版本列表')
-    assert.ok(Array.isArray(versionsBody.data.result), '版本 result 不是数组')
-    assert.equal(versionsBody.data.result.length, 2, '应有创建和保存两条快照')
-    assert.equal(versionsBody.data.result[0].revision, 2, '版本应按 revision 倒序')
-    const firstVersionId = versionsBody.data.result.at(-1).id
-    record('GET /diagrams/{id}/versions 返回 R + 版本数组')
-
-    const versionDetail = await call('GET', `/diagrams/${id}/versions/${firstVersionId}`)
-    const versionBody = expectEnvelope(versionDetail, 200, true, '版本详情')
-    assert.equal(versionBody.data.result.revision, 1, '版本详情 revision 不符')
-    assert.ok(Array.isArray(versionBody.data.result.document.nodes), '版本详情缺少文档')
-    record('GET /diagrams/{id}/versions/{versionId} 返回 R + 版本文档')
-
-    const restore = await call('POST', `/diagrams/${id}/versions/${firstVersionId}/restore?revision=2`)
-    const restoreBody = expectEnvelope(restore, 200, true, '恢复版本')
-    assert.equal(restoreBody.data.result.revision, 3, '恢复后 revision 应为 3')
-    assert.equal(restoreBody.data.result.document.nodes.length, 0, '恢复后应回到空节点文档')
-    record('POST 恢复版本返回 R 且 revision 继续自增')
 
     const duplicate = await call('POST', `/diagrams/${id}/duplicate`)
     const duplicateBody = expectEnvelope(duplicate, 201, true, '复制')
     const copyId = duplicateBody.data.result.id
     createdIds.push(copyId)
     assert.notEqual(copyId, id, '副本 id 不应与原图相同')
-    assert.equal(duplicateBody.data.result.revision, 1, '副本 revision 应为 1')
+    assert.equal(duplicateBody.data.result.document.nodes.length, 1, '副本文档未深拷贝')
     record('POST /diagrams/{id}/duplicate 返回 201 + 副本详情')
+
+    const noVersions = await call('GET', `/diagrams/${id}/versions`)
+    expectEnvelope(noVersions, 404, false, '版本接口已移除')
+    record('版本接口已移除并返回 404')
 
     const deleted = await call('DELETE', `/diagrams/${id}`)
     const deletedBody = expectEnvelope(deleted, 200, true, '删除')
@@ -183,7 +153,7 @@ const run = async () => {
     const gone = await call('GET', `/diagrams/${id}`)
     const goneBody = expectEnvelope(gone, 404, false, '已删除详情')
     assert.ok(goneBody.message.includes('不存在'), '已删除提示语不符')
-    record('软删除后查询返回 404 + R 错误体')
+    record('物理删除后查询返回 404 + R 错误体')
 
     const notFound = await call('GET', '/diagrams/999999999')
     const notFoundBody = expectEnvelope(notFound, 404, false, '不存在图纸')
