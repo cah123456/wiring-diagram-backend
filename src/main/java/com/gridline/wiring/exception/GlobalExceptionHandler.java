@@ -153,7 +153,7 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 处理数据库约束冲突，例如图纸编号唯一键碰撞。
+     * 处理数据库约束冲突，例如唯一索引或字段长度超限。
      *
      * @param ex      数据完整性异常
      * @param request 当前请求

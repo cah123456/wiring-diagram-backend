@@ -27,10 +27,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 
 /**
  * 接线图业务实现。
@@ -61,15 +59,6 @@ public class DiagramServiceImpl extends ServiceImpl<DiagramMapper, Diagram>
     /** 列表每页最大条数。 */
     private static final int MAX_PAGE_SIZE = 60;
 
-    /** 安全随机数生成器，用于生成图纸编号后缀。 */
-    private static final SecureRandom RANDOM = new SecureRandom();
-
-    /** 编号后缀字符集：去掉容易混淆的 I、O、0、1，保留 32 个字符。 */
-    private static final char[] CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".toCharArray();
-
-    /** 编号中的日期格式，例如 20261103。 */
-    private static final DateTimeFormatter CODE_DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
-
     private final DiagramMapper diagramMapper;
 
     private final ObjectMapper objectMapper;
@@ -78,7 +67,7 @@ public class DiagramServiceImpl extends ServiceImpl<DiagramMapper, Diagram>
      * 分页查询图纸，按最后更新时间倒序。
      *
      * <p>入参来自 {@link DiagramQueryDTO}：页码从 1 开始（与参考项目和前端分页
-     * 组件保持一致），每页条数防御性裁剪到 1~60。关键字匹配名称、编号或说明。
+     * 组件保持一致），每页条数防御性裁剪到 1~60。关键字匹配名称或说明。
      * 返回值直接使用 MyBatis-Plus 的 {@link IPage}，与参考项目一致。</p>
      */
     @Override
@@ -94,7 +83,6 @@ public class DiagramServiceImpl extends ServiceImpl<DiagramMapper, Diagram>
         LambdaQueryWrapper<Diagram> wrapper = new LambdaQueryWrapper<>();
         if (!keyword.isEmpty()) {
             wrapper.and(w -> w.like(Diagram::getName, keyword)
-                    .or().like(Diagram::getCode, keyword)
                     .or().like(Diagram::getDescription, keyword));
         }
         wrapper.orderByDesc(Diagram::getUpdatedAt).orderByDesc(Diagram::getId);
@@ -139,7 +127,6 @@ public class DiagramServiceImpl extends ServiceImpl<DiagramMapper, Diagram>
 
         Diagram diagram = new Diagram();
         diagram.setName(dto.getName().trim());
-        diagram.setCode(nextCode());
         diagram.setVoltageLevel(trimToNull(dto.getVoltageLevel()));
         diagram.setDescription(trimToNull(dto.getDescription()));
         diagram.setDocumentJson(writeDocument(document));
@@ -206,7 +193,7 @@ public class DiagramServiceImpl extends ServiceImpl<DiagramMapper, Diagram>
     }
 
     /**
-     * 复制图纸。深拷贝画布 JSON 和缩略图，生成新编号；副本与原图完全独立。
+     * 复制图纸。深拷贝画布 JSON 和缩略图；副本使用新主键，与原图完全独立。
      */
     @Override
     @Transactional
@@ -214,7 +201,6 @@ public class DiagramServiceImpl extends ServiceImpl<DiagramMapper, Diagram>
         Diagram source = requireDiagram(id);
         Diagram copy = new Diagram();
         copy.setName(source.getName() + " · 副本");
-        copy.setCode(nextCode());
         copy.setVoltageLevel(source.getVoltageLevel());
         copy.setDescription(source.getDescription());
         copy.setDocumentJson(source.getDocumentJson());
@@ -244,29 +230,6 @@ public class DiagramServiceImpl extends ServiceImpl<DiagramMapper, Diagram>
             throw BusinessException.notFound("图纸不存在或已被删除");
         }
         return diagram;
-    }
-
-    /**
-     * 生成全局唯一图纸编号，格式 {@code WD-yyyyMMdd-XXXX}。
-     *
-     * <p>先查询再插入只能降低碰撞概率，真正的唯一性由数据库唯一索引兜底；极端并发下
-     * 插入冲突由全局异常处理器返回 409。最多重试 20 次。</p>
-     */
-    private String nextCode() {
-        String prefix = "WD-" + LocalDate.now().format(CODE_DATE) + "-";
-        for (int attempt = 0; attempt < 20; attempt++) {
-            StringBuilder suffix = new StringBuilder(4);
-            for (int i = 0; i < 4; i++) {
-                suffix.append(CODE_CHARS[RANDOM.nextInt(CODE_CHARS.length)]);
-            }
-            String code = prefix + suffix;
-            Long count = diagramMapper.selectCount(
-                    new LambdaQueryWrapper<Diagram>().eq(Diagram::getCode, code));
-            if (count == null || count == 0) {
-                return code;
-            }
-        }
-        throw new IllegalStateException("无法生成唯一图纸编号");
     }
 
     /**

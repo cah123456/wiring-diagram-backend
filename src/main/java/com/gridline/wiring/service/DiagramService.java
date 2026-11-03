@@ -70,7 +70,7 @@ public interface DiagramService extends IService<Diagram> {
     DiagramVO saveDocument(Long id, DiagramSaveDTO dto);
 
     /**
-     * 复制图纸，生成新编号并把名称追加“ · 副本”。
+     * 复制图纸，把名称追加“ · 副本”。
      *
      * @param id 源图纸主键
      * @return 副本详情

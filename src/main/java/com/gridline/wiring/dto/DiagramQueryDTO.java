@@ -11,6 +11,6 @@ import lombok.Data;
 @Data
 public class DiagramQueryDTO extends PageDTO {
 
-    /** 模糊搜索关键字，同时匹配名称、编号和说明；为空表示不过滤。 */
+    /** 模糊搜索关键字，同时匹配名称和说明；为空表示不过滤。 */
     private String keyword;
 }

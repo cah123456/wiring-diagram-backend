@@ -116,7 +116,7 @@ public class DiagramController {
     }
 
     /**
-     * 复制图纸，生成新的编号和名称，画布内容深拷贝。
+     * 复制图纸，名称追加“ · 副本”，画布内容深拷贝。
      *
      * @param id 源图纸主键
      * @return HTTP 201，result 为副本详情

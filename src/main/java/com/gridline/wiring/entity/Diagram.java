@@ -31,9 +31,6 @@ public class Diagram {
     /** 图纸名称，必填，最长 120 字符；列表页关键字搜索字段之一。 */
     private String name;
 
-    /** 图纸编号，形如 {@code WD-20261103-AB3K}，全局唯一，由服务端生成。 */
-    private String code;
-
     /** 电压等级，如 10kV、0.4kV；可为空。 */
     private String voltageLevel;
 

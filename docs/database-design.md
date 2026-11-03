@@ -36,7 +36,6 @@ DB_PASSWORD=root
 | --- | --- | --- | --- | --- |
 | `id` | BIGINT | 否 | 自增 | 主键 |
 | `name` | VARCHAR(120) | 否 | — | 图纸名称，列表搜索字段 |
-| `code` | VARCHAR(64) | 否 | — | 图纸编号，格式 `WD-yyyyMMdd-XXXX`，全局唯一 |
 | `voltage_level` | VARCHAR(32) | 是 | NULL | 电压等级，如 10kV、0.4kV |
 | `description` | VARCHAR(500) | 是 | NULL | 图纸说明 |
 | `document_json` | LONGTEXT | 否 | — | 完整画布文档 JSON，见第 4 节 |
@@ -51,7 +50,6 @@ DB_PASSWORD=root
 | 名称 | 类型 | 字段 | 用途 |
 | --- | --- | --- | --- |
 | `PRIMARY` | 主键 | `id` | 主键查询 |
-| `uk_wiring_diagram_code` | 唯一索引 | `code` | 保证图纸编号唯一，并发插入兜底 |
 | `idx_wiring_diagram_updated_at` | 普通索引 | `updated_at` | 图纸库按更新时间倒序分页 |
 | `idx_wiring_diagram_name` | 普通索引 | `name` | 名称关键字搜索 |
 
@@ -136,12 +134,12 @@ DB_PASSWORD=root
 
 ```sql
 INSERT INTO gridline_wiring.wiring_diagram
-    (name, code, voltage_level, description, document_json, thumbnail,
+    (name, voltage_level, description, document_json, thumbnail,
      node_count, edge_count, created_at, updated_at)
-SELECT name, code, voltage_level, description, document_json, thumbnail,
+SELECT name, voltage_level, description, document_json, thumbnail,
        node_count, edge_count, created_at, updated_at
 FROM switchgear_wiring.wiring_diagram
 WHERE status = 'ACTIVE';
 ```
 
-迁移前请确认 `code` 在新库中不存在；如存在冲突，需要为冲突图纸重新生成编号。
+旧表存在 `code` 列时无需迁移该列，新表以自增主键 `id` 标识图纸。

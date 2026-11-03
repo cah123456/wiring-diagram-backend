@@ -13,7 +13,6 @@
 CREATE TABLE IF NOT EXISTS wiring_diagram (
     id              BIGINT          NOT NULL AUTO_INCREMENT COMMENT '主键',
     name            VARCHAR(120)    NOT NULL                COMMENT '图纸名称',
-    code            VARCHAR(64)     NOT NULL                COMMENT '图纸编号，全局唯一，如 WD-20261103-AB3K',
     voltage_level   VARCHAR(32)     NULL                    COMMENT '电压等级，如 10kV',
     description     VARCHAR(500)    NULL                    COMMENT '图纸说明',
     document_json   LONGTEXT        NOT NULL                COMMENT '完整画布文档 JSON（paper/settings/meta/nodes/edges）',
@@ -23,7 +22,6 @@ CREATE TABLE IF NOT EXISTS wiring_diagram (
     created_at      DATETIME(3)     NOT NULL                COMMENT '创建时间',
     updated_at      DATETIME(3)     NOT NULL                COMMENT '最后更新时间',
     PRIMARY KEY (id),
-    UNIQUE KEY uk_wiring_diagram_code (code),
     KEY idx_wiring_diagram_updated_at (updated_at),
     KEY idx_wiring_diagram_name (name)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci

@@ -20,9 +20,6 @@ public class DiagramVO {
     /** 图纸名称。 */
     private String name;
 
-    /** 全局唯一图纸编号，格式 WD-yyyyMMdd-XXXX。 */
-    private String code;
-
     /** 电压等级，可为 null。 */
     private String voltageLevel;
 

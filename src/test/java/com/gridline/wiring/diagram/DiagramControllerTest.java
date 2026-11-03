@@ -65,7 +65,6 @@ class DiagramControllerTest {
         DiagramVO detail = new DiagramVO();
         detail.setId(1L);
         detail.setName("测试图纸");
-        detail.setCode("WD-20261103-ABCD");
         detail.setVoltageLevel("10kV");
         detail.setDocument(mapper.createObjectNode());
         detail.setCreatedAt(LocalDateTime.now());
@@ -79,7 +78,7 @@ class DiagramControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.message").value("图纸创建成功"))
                 .andExpect(jsonPath("$.data.result.id").value(1))
-                .andExpect(jsonPath("$.data.result.code").value("WD-20261103-ABCD"));
+                .andExpect(jsonPath("$.data.result.name").value("测试图纸"));
     }
 
     @Test
